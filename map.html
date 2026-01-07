@@ -58,23 +58,66 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
+        // 1. Initialize Map
         var map = L.map('map').setView([13.0, 101.5], 6); 
 
-        // 2. Add a "Clean" Base Map (CartoDB Positron)
-        // This removes the noise and makes your data stand out
+        // 2. Add "Clean" Base Map
         var osmLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
             attribution: '© OpenStreetMap contributors, © CARTO',
             subdomains: 'abcd',
             maxZoom: 20
         }).addTo(map);
 
-        // 1. Create all Layer Groups
+        // 3. Create Layer Groups
         var solarLayer = L.layerGroup();
         var windLayer = L.layerGroup();
         var linesLayer = L.layerGroup();
-        var substationsLayer = L.layerGroup(); // <--- NEW LAYER
+        var substationsLayer = L.layerGroup();
 
-        // 2. Updated Loader Function (Now handles POINTS)
+        // 4. Helper Function to Format Popups
+        function getPopupContent(props, type) {
+            let content = `<div style="font-size:14px; line-height:1.5;">`;
+            
+            if (type === 'line') {
+                // TRANSMISSION LINES
+                let volts = props.Voltage_kV || props.voltage || "Unknown";
+                let operator = props.operator_en || props.operator || "Unknown Operator";
+                content += `<strong>⚡ Transmission Line</strong><br>
+                            <b>Voltage:</b> ${volts} kV<br>
+                            <b>Operator:</b> ${operator}<br>
+                            <b>Status:</b> Active`;
+            } 
+            else if (type === 'substation') {
+                // SUBSTATIONS
+                let name = props.name_en || props.name || "Unnamed Substation";
+                let volts = props.Voltage_kV || props.voltage || "N/A";
+                content += `<strong>🏢 ${name}</strong><br>
+                            <b>Voltage:</b> ${volts} kV<br>
+                            <b>Type:</b> ${props.substation || "Substation"}`;
+            } 
+            else if (type === 'solar') {
+                // SOLAR ZONES
+                let area = props.Area_sq_Km || props.Area_sq_km || 0;
+                // Round area to 2 decimal places
+                let areaClean = parseFloat(area).toFixed(2);
+                content += `<strong>☀️ Solar Potential Zone</strong><br>
+                            <b>Potential Class:</b> ${props.Potential || props.gridcode}<br>
+                            <b>Area:</b> ${areaClean} sq km`;
+            } 
+            else if (type === 'wind') {
+                // WIND ZONES
+                let area = props.Area_sq_km || props.Area_sq_Km || 0;
+                let areaClean = parseFloat(area).toFixed(2);
+                content += `<strong>💨 Wind Potential Zone</strong><br>
+                            <b>Wind Class:</b> ${props.Potential_ms || props.gridcode}<br>
+                            <b>Area:</b> ${areaClean} sq km`;
+            }
+            
+            content += `</div>`;
+            return content;
+        }
+
+        // 5. Smart Loader Function
         async function loadLayer(filename, layerGroup, color, type) {
             try {
                 const response = await fetch(`data/${filename}`);
@@ -82,11 +125,11 @@
                 const data = await response.json();
                 
                 L.geoJSON(data, {
-                    // This part handles Points (Substations)
+                    // Style for Points (Substations)
                     pointToLayer: function (feature, latlng) {
-                        if (type === 'point') {
+                        if (type === 'substation') {
                             return L.circleMarker(latlng, {
-                                radius: 4,
+                                radius: 5,
                                 fillColor: "black",
                                 color: "#fff",
                                 weight: 1,
@@ -95,7 +138,7 @@
                             });
                         }
                     },
-                    // This part handles Shapes & Lines
+                    // Style for Lines & Polygons
                     style: function (feature) {
                         return {
                             color: color,
@@ -104,14 +147,13 @@
                             fillOpacity: 0.5
                         };
                     },
+                    // The "Popups" Magic
                     onEachFeature: function (feature, layer) {
-                        let popupContent = "<strong>Details:</strong><br>";
                         if (feature.properties) {
-                            for (let key in feature.properties) {
-                                popupContent += `<b>${key}:</b> ${feature.properties[key]}<br>`;
-                            }
+                            // Use our new helper function to get clean text
+                            let cleanPopup = getPopupContent(feature.properties, type);
+                            layer.bindPopup(cleanPopup);
                         }
-                        layer.bindPopup(popupContent);
                     }
                 }).addTo(layerGroup);
             } catch (error) {
@@ -119,28 +161,30 @@
             }
         }
 
-        // 3. Load all files (Including the new substations)
-        loadLayer('solar.geojson', solarLayer, 'orange', 'poly');
-        loadLayer('wind.geojson', windLayer, 'blue', 'poly');
+        // 6. Load Data
+        loadLayer('solar.geojson', solarLayer, 'orange', 'solar');
+        loadLayer('wind.geojson', windLayer, 'blue', 'wind');
         loadLayer('lines.geojson', linesLayer, 'red', 'line');
-        loadLayer('substations.geojson', substationsLayer, 'black', 'point'); // <--- NEW LOAD
+        loadLayer('substations.geojson', substationsLayer, 'black', 'substation');
 
-        // 4. Update Controls
-        var baseMaps = { "Street Map": osmLayer };
+        // 7. Add Controls
+        var baseMaps = { "Clean Map": osmLayer };
         var overlayMaps = {
             "Solar Zones": solarLayer,
             "Wind Zones": windLayer,
             "Transmission Lines": linesLayer,
-            "Substations": substationsLayer // <--- NEW CONTROL
+            "Substations": substationsLayer
         };
 
         L.control.layers(baseMaps, overlayMaps, {collapsed: false}).addTo(map);
         
-        // Default visible layers
+        // Default Visibility
         solarLayer.addTo(map);
         linesLayer.addTo(map);
-        // We leave substations OFF by default so the map isn't too crowded initially
-        // (User can toggle them ON)
+        substationsLayer.addTo(map);
+
+        // 8. Add Scale Bar
+        L.control.scale({position: 'bottomright'}).addTo(map);
 
     </script>
 </body>
