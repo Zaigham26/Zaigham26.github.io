@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thailand Renewable Energy Map</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { height: 100vh; width: 100%; }
+        
+        .info-box {
+            padding: 15px;
+            background: white;
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            border-radius: 8px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.2);
+            font-family: sans-serif;
+            max-width: 250px;
+        }
+        h3 { margin-top: 0; color: #0366d6; }
+        .legend-item { display: flex; align-items: center; margin-bottom: 5px; }
+        .color-box { width: 20px; height: 20px; margin-right: 10px; opacity: 0.7; }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+    
+    <div class="info-box">
+        <h3>Energy Zones (Thailand)</h3>
+        <p>Use the layer icon (top-right) to toggle data.</p>
+        
+        <div class="legend-item">
+            <div class="color-box" style="background: orange;"></div> Solar Potential
+        </div>
+        <div class="legend-item">
+            <div class="color-box" style="background: blue;"></div> Wind Potential
+        </div>
+        <div class="legend-item">
+            <div class="color-box" style="background: red; height: 3px; margin-top: 8px;"></div> Transmission Lines
+        </div>
+        
+        <br>
+        <a href="index.html" style="text-decoration: none; color: #333;">&larr; Back to Home</a>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // 1. Initialize map centered on THAILAND
+        // Coords: [13.0, 101.5] roughly centers the view. Zoom 6 fits the whole country.
+        var map = L.map('map').setView([13.0, 101.5], 6); 
+
+        // 2. Add OpenStreetMap Base Layer
+        var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        // 3. Create Layer Groups
+        var solarLayer = L.layerGroup();
+        var windLayer = L.layerGroup();
+        var linesLayer = L.layerGroup();
+
+        // 4. Function to load data with specific styles
+        async function loadLayer(filename, layerGroup, color, type) {
+            try {
+                const response = await fetch(`data/${filename}`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const data = await response.json();
+                
+                L.geoJSON(data, {
+                    style: function (feature) {
+                        return {
+                            color: color,
+                            weight: type === 'line' ? 2 : 1,
+                            fillColor: color,
+                            fillOpacity: 0.5
+                        };
+                    },
+                    onEachFeature: function (feature, layer) {
+                        // Create a popup with all available properties
+                        let popupContent = "<strong>Details:</strong><br>";
+                        if (feature.properties) {
+                            for (let key in feature.properties) {
+                                popupContent += `<b>${key}:</b> ${feature.properties[key]}<br>`;
+                            }
+                        }
+                        layer.bindPopup(popupContent);
+                    }
+                }).addTo(layerGroup);
+            } catch (error) {
+                console.error("Error loading layer:", filename, error);
+            }
+        }
+
+        // 5. Load your files
+        // Ensure your files in the 'data' folder are named EXACTLY like this:
+        loadLayer('solar.geojson', solarLayer, 'orange', 'poly');
+        loadLayer('wind.geojson', windLayer, 'blue', 'poly');
+        loadLayer('lines.geojson', linesLayer, 'red', 'line');
+
+        // 6. Add Layer Controls
+        var baseMaps = { "Street Map": osmLayer };
+        var overlayMaps = {
+            "Solar Zones": solarLayer,
+            "Wind Zones": windLayer,
+            "Transmission Lines": linesLayer
+        };
+
+        L.control.layers(baseMaps, overlayMaps, {collapsed: false}).addTo(map);
+        
+        // Turn them on by default
+        solarLayer.addTo(map);
+        linesLayer.addTo(map);
+
+    </script>
+</body>
+</html>
