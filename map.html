@@ -11,11 +11,11 @@
         body { margin: 0; padding: 0; }
         #map { height: 100vh; width: 100%; }
         
+        /* Legend Box (Bottom Left) */
         .info-box {
             padding: 15px;
             background: white;
             position: absolute;
-            /* CHANGED: Moved to bottom-left to uncover the toggle buttons */
             bottom: 20px; 
             left: 10px;
             z-index: 1000;
@@ -24,9 +24,10 @@
             font-family: sans-serif;
             max-width: 250px;
         }
-        h3 { margin-top: 0; color: #0366d6; }
-        .legend-item { display: flex; align-items: center; margin-bottom: 5px; }
-        .color-box { width: 20px; height: 20px; margin-right: 10px; opacity: 0.7; }
+        h3 { margin-top: 0; color: #0366d6; font-size: 1.1rem; }
+        .legend-item { display: flex; align-items: center; margin-bottom: 5px; font-size: 0.9rem; }
+        .color-box { width: 18px; height: 18px; margin-right: 10px; opacity: 0.7; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 13px; margin-left: 3px; }
     </style>
 </head>
 <body>
@@ -35,7 +36,7 @@
     
     <div class="info-box">
         <h3>Energy Zones (Thailand)</h3>
-        <p>Use the layer icon (top-right) to toggle data.</p>
+        <p>Toggle layers top-right</p>
         
         <div class="legend-item">
             <div class="color-box" style="background: orange;"></div> Solar Potential
@@ -46,6 +47,9 @@
         <div class="legend-item">
             <div class="color-box" style="background: red; height: 3px; margin-top: 8px;"></div> Transmission Lines
         </div>
+        <div class="legend-item">
+            <div class="dot" style="background: black;"></div> Substations
+        </div>
         
         <br>
         <a href="index.html" style="text-decoration: none; color: #333;">&larr; Back to Home</a>
@@ -54,22 +58,20 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        // 1. Initialize map centered on THAILAND
-        // Coords: [13.0, 101.5] roughly centers the view. Zoom 6 fits the whole country.
         var map = L.map('map').setView([13.0, 101.5], 6); 
 
-        // 2. Add OpenStreetMap Base Layer
         var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
             attribution: '© OpenStreetMap'
         }).addTo(map);
 
-        // 3. Create Layer Groups
+        // 1. Create all Layer Groups
         var solarLayer = L.layerGroup();
         var windLayer = L.layerGroup();
         var linesLayer = L.layerGroup();
+        var substationsLayer = L.layerGroup(); // <--- NEW LAYER
 
-        // 4. Function to load data with specific styles
+        // 2. Updated Loader Function (Now handles POINTS)
         async function loadLayer(filename, layerGroup, color, type) {
             try {
                 const response = await fetch(`data/${filename}`);
@@ -77,6 +79,20 @@
                 const data = await response.json();
                 
                 L.geoJSON(data, {
+                    // This part handles Points (Substations)
+                    pointToLayer: function (feature, latlng) {
+                        if (type === 'point') {
+                            return L.circleMarker(latlng, {
+                                radius: 4,
+                                fillColor: "black",
+                                color: "#fff",
+                                weight: 1,
+                                opacity: 1,
+                                fillOpacity: 0.8
+                            });
+                        }
+                    },
+                    // This part handles Shapes & Lines
                     style: function (feature) {
                         return {
                             color: color,
@@ -86,7 +102,6 @@
                         };
                     },
                     onEachFeature: function (feature, layer) {
-                        // Create a popup with all available properties
                         let popupContent = "<strong>Details:</strong><br>";
                         if (feature.properties) {
                             for (let key in feature.properties) {
@@ -101,25 +116,28 @@
             }
         }
 
-        // 5. Load your files
-        // Ensure your files in the 'data' folder are named EXACTLY like this:
+        // 3. Load all files (Including the new substations)
         loadLayer('solar.geojson', solarLayer, 'orange', 'poly');
         loadLayer('wind.geojson', windLayer, 'blue', 'poly');
         loadLayer('lines.geojson', linesLayer, 'red', 'line');
+        loadLayer('substations.geojson', substationsLayer, 'black', 'point'); // <--- NEW LOAD
 
-        // 6. Add Layer Controls
+        // 4. Update Controls
         var baseMaps = { "Street Map": osmLayer };
         var overlayMaps = {
             "Solar Zones": solarLayer,
             "Wind Zones": windLayer,
-            "Transmission Lines": linesLayer
+            "Transmission Lines": linesLayer,
+            "Substations": substationsLayer // <--- NEW CONTROL
         };
 
         L.control.layers(baseMaps, overlayMaps, {collapsed: false}).addTo(map);
         
-        // Turn them on by default
+        // Default visible layers
         solarLayer.addTo(map);
         linesLayer.addTo(map);
+        // We leave substations OFF by default so the map isn't too crowded initially
+        // (User can toggle them ON)
 
     </script>
 </body>
