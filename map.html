@@ -9,6 +9,9 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 
+<!-- Turf.js — for dissolving/unioning polygon features -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Turf.js/6.5.0/turf.min.js"></script>
+
 <!-- Google Fonts -->
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
 
@@ -228,7 +231,7 @@
   <div id="map-container">
     <div id="loading">
       <div class="spinner"></div>
-      <div class="loading-text">Loading spatial data…</div>
+      <div class="loading-text" id="loading-msg">Loading spatial data…</div>
     </div>
 
     <div id="map"></div>
@@ -408,12 +411,30 @@ async function loadLayer(key) {
       },
     });
   } else {
-    layer = L.geoJSON(gj, {
-      style: STYLES[key],
+    // ── DISSOLVE: union all polygons to eliminate internal gaps/holes ──
+    let dissolved = gj;
+    try {
+      // Small outward buffer (~100m) to close tiny gaps between adjacent polgyons
+      const buffered = turf.buffer(gj, 0.05, { units: 'kilometers' });
+      let unioned = buffered.features[0];
+      for (let i = 1; i < buffered.features.length; i++) {
+        try { unioned = turf.union(unioned, buffered.features[i]); }
+        catch(e) { /* skip malformed geometry */ }
+      }
+      // Shrink back to restore approximate original boundary
+      const shrunk = turf.buffer(unioned, -0.05, { units: 'kilometers' });
+      dissolved = shrunk || gj;
+    } catch(e) {
+      console.warn('Dissolve failed for', key, e);
+      dissolved = gj;
+    }
+
+    layer = L.geoJSON(dissolved, {
+      style: { ...STYLES[key], fillOpacity: 0.45, weight: 1.5 },
       onEachFeature: (f, l) => {
-        l.on('click', () => showTooltip(LABELS[key], f.properties));
-        l.on('mouseover', () => l.setStyle({ ...STYLES[key], fillOpacity: 0.65, weight: 2 }));
-        l.on('mouseout',  () => l.setStyle(STYLES[key]));
+        l.on('click', () => showTooltip(LABELS[key], { Layer: LABELS[key], Source: 'AHP/MCDM Analysis', Note: 'Dissolved zone' }));
+        l.on('mouseover', () => l.setStyle({ ...STYLES[key], fillOpacity: 0.65, weight: 2.5 }));
+        l.on('mouseout',  () => l.setStyle({ ...STYLES[key], fillOpacity: 0.45, weight: 1.5 }));
       },
     });
   }
@@ -434,9 +455,17 @@ function toggleLayer(key) {
 
 /* ── INIT ───────────────────────────────────────────────── */
 (async () => {
-  // Load in z-order: lines first (bottom), then zones, then substations on top
-  const order = ['lines', 'solar', 'wind', 'subs'];
-  await Promise.all(order.map(loadLayer));
+  const msg = document.getElementById('loading-msg');
+
+  msg.textContent = 'Fetching GeoJSON data…';
+  // Lines & substations load raw (no dissolve needed)
+  await Promise.all(['lines', 'subs'].map(loadLayer));
+
+  msg.textContent = 'Dissolving solar zones…';
+  await loadLayer('solar');
+
+  msg.textContent = 'Dissolving wind zones…';
+  await loadLayer('wind');
 
   // Remove loading screen
   const ld = document.getElementById('loading');
