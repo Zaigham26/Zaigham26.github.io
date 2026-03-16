@@ -1,191 +1,451 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Thailand Renewable Energy Map</title>
-    
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    
-    <style>
-        body { margin: 0; padding: 0; }
-        #map { height: 100vh; width: 100%; }
-        
-        /* Legend Box (Bottom Left) */
-        .info-box {
-            padding: 15px;
-            background: white;
-            position: absolute;
-            bottom: 20px; 
-            left: 10px;
-            z-index: 1000;
-            border-radius: 8px;
-            box-shadow: 0 0 15px rgba(0,0,0,0.2);
-            font-family: sans-serif;
-            max-width: 250px;
-        }
-        h3 { margin-top: 0; color: #0366d6; font-size: 1.1rem; }
-        .legend-item { display: flex; align-items: center; margin-bottom: 5px; font-size: 0.9rem; }
-        .color-box { width: 18px; height: 18px; margin-right: 10px; opacity: 0.7; }
-        .dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 13px; margin-left: 3px; }
-    </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Thailand Renewable Energy Zones — AHP/MCDM Analysis</title>
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+
+<style>
+  /* ── RESET & BASE ─────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --ink:      #0d1117;
+    --paper:    #f5f3ee;
+    --solar:    #f5a623;
+    --wind:     #3b82f6;
+    --grid:     #dc2626;
+    --sub:      #7c3aed;
+    --accent:   #1a9e6e;
+    --muted:    #6b7280;
+    --panel:    rgba(245,243,238,0.97);
+    --shadow:   0 4px 32px rgba(13,17,23,0.14);
+    --radius:   10px;
+  }
+
+  html, body { height: 100%; font-family: 'DM Sans', sans-serif; background: var(--ink); color: var(--ink); }
+
+  /* ── LAYOUT ───────────────────────────────────── */
+  #app { display: flex; flex-direction: column; height: 100vh; }
+
+  /* ── TOP HEADER BAR ───────────────────────────── */
+  #header {
+    background: var(--ink);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 28px;
+    height: 62px;
+    flex-shrink: 0;
+    border-bottom: 2px solid var(--accent);
+    z-index: 900;
+  }
+  #header .logo-block { display: flex; align-items: center; gap: 14px; }
+  #header .logo-badge {
+    width: 36px; height: 36px; border-radius: 8px;
+    background: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #header .logo-badge svg { width: 20px; height: 20px; fill: #fff; }
+  #header h1 { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700; letter-spacing: 0.02em; line-height: 1.2; }
+  #header h1 span { display: block; font-weight: 400; font-size: 11px; color: #9ca3af; letter-spacing: 0.06em; text-transform: uppercase; }
+  #header .meta { font-size: 11px; color: #9ca3af; text-align: right; letter-spacing: 0.04em; }
+  #header .meta strong { color: var(--accent); display: block; font-size: 12px; }
+
+  /* ── MAP WRAPPER ──────────────────────────────── */
+  #map-container { flex: 1; position: relative; }
+  #map { width: 100%; height: 100%; }
+
+  /* ── LEFT PANEL ───────────────────────────────── */
+  #panel {
+    position: absolute;
+    top: 18px; left: 18px;
+    width: 260px;
+    background: var(--panel);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    z-index: 800;
+    overflow: hidden;
+    border: 1px solid rgba(0,0,0,0.08);
+  }
+  #panel-header {
+    background: var(--ink);
+    color: #fff;
+    padding: 14px 18px;
+  }
+  #panel-header h2 { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+  #panel-header p  { font-size: 10.5px; color: #9ca3af; margin-top: 2px; }
+
+  #panel-body { padding: 16px 18px; }
+
+  .section-label {
+    font-size: 9.5px; font-weight: 500; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--muted);
+    margin-bottom: 8px; margin-top: 14px;
+  }
+  .section-label:first-child { margin-top: 0; }
+
+  /* layer toggles */
+  .layer-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+    cursor: pointer;
+    user-select: none;
+  }
+  .layer-row:last-child { border-bottom: none; }
+  .layer-info { display: flex; align-items: center; gap: 10px; }
+  .swatch { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+  .swatch.line  { height: 3px; border-radius: 1px; }
+  .swatch.dot   { border-radius: 50%; }
+  .layer-name   { font-size: 12.5px; color: var(--ink); }
+  .toggle-switch {
+    width: 34px; height: 18px; border-radius: 9px;
+    background: #d1d5db; position: relative; transition: background .2s;
+  }
+  .toggle-switch.on { background: var(--accent); }
+  .toggle-switch::after {
+    content:''; position: absolute;
+    width:14px; height:14px; border-radius:50%;
+    background:#fff; top:2px; left:2px;
+    transition: left .2s; box-shadow: 0 1px 3px rgba(0,0,0,.2);
+  }
+  .toggle-switch.on::after { left: 18px; }
+
+  /* stats */
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-card {
+    background: rgba(0,0,0,0.04); border-radius: 7px;
+    padding: 9px 11px;
+  }
+  .stat-value { font-family:'Syne',sans-serif; font-size: 18px; font-weight: 800; line-height:1; }
+  .stat-label { font-size: 10px; color: var(--muted); margin-top: 3px; }
+  .stat-card.solar .stat-value { color: var(--solar); }
+  .stat-card.wind  .stat-value { color: var(--wind); }
+  .stat-card.grid  .stat-value { color: var(--grid); }
+  .stat-card.sub   .stat-value { color: var(--sub);  }
+
+  /* methodology badge */
+  .method-badge {
+    background: rgba(26,158,110,0.08);
+    border: 1px solid rgba(26,158,110,0.2);
+    border-radius: 7px;
+    padding: 9px 12px;
+    font-size: 11px;
+    color: var(--ink);
+    line-height: 1.5;
+  }
+  .method-badge strong { color: var(--accent); }
+
+  /* ── BOTTOM STATUS BAR ────────────────────────── */
+  #statusbar {
+    position: absolute;
+    bottom: 18px; left: 50%;
+    transform: translateX(-50%);
+    background: var(--ink);
+    color: #fff;
+    border-radius: 30px;
+    padding: 8px 20px;
+    font-size: 11px; letter-spacing: 0.04em;
+    z-index: 800;
+    display: flex; gap: 18px; align-items: center;
+    box-shadow: var(--shadow);
+    white-space: nowrap;
+  }
+  #statusbar .dot { width:7px; height:7px; border-radius:50%; background: var(--accent); display:inline-block; margin-right:5px; }
+  #statusbar .pipe { color: #374151; }
+
+  /* ── LOADING OVERLAY ──────────────────────────── */
+  #loading {
+    position: absolute; inset: 0;
+    background: var(--ink);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 9999;
+    gap: 20px;
+    transition: opacity .5s ease;
+  }
+  #loading.fade-out { opacity: 0; pointer-events: none; }
+  .spinner { width:40px; height:40px; border:3px solid rgba(255,255,255,.1); border-top-color: var(--accent); border-radius:50%; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { color:#9ca3af; font-size:13px; letter-spacing:.06em; text-transform:uppercase; }
+
+  /* ── INFO TOOLTIP ─────────────────────────────── */
+  #info-tooltip {
+    position: absolute;
+    bottom: 60px; left: 50%; transform: translateX(-50%);
+    background: var(--panel);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    font-size: 12px;
+    z-index: 810;
+    box-shadow: var(--shadow);
+    max-width: 300px;
+    display: none;
+    border-left: 3px solid var(--accent);
+  }
+  #info-tooltip h4 { font-family:'Syne',sans-serif; font-size:13px; margin-bottom:4px; }
+
+  /* Leaflet overrides */
+  .leaflet-control-attribution { font-size: 9px !important; background: rgba(245,243,238,.9) !important; }
+  .leaflet-control-zoom { border: none !important; box-shadow: var(--shadow) !important; }
+  .leaflet-control-zoom a {
+    background: var(--ink) !important; color: #fff !important;
+    border: none !important; font-size: 16px !important;
+    line-height: 26px !important; width: 28px !important; height: 28px !important;
+  }
+  .leaflet-control-zoom a:hover { background: #1f2937 !important; }
+</style>
 </head>
 <body>
+<div id="app">
 
-    <div id="map"></div>
-    
-    <div class="info-box">
-        <h3>Energy Zones (Thailand)</h3>
-        <p>Toggle layers top-right</p>
-        
-        <div class="legend-item">
-            <div class="color-box" style="background: orange;"></div> Solar Potential
-        </div>
-        <div class="legend-item">
-            <div class="color-box" style="background: blue;"></div> Wind Potential
-        </div>
-        <div class="legend-item">
-            <div class="color-box" style="background: red; height: 3px; margin-top: 8px;"></div> Transmission Lines
-        </div>
-        <div class="legend-item">
-            <div class="dot" style="background: black;"></div> Substations
-        </div>
-        
-        <br>
-        <a href="index.html" style="text-decoration: none; color: #333;">&larr; Back to Home</a>
+  <!-- HEADER -->
+  <div id="header">
+    <div class="logo-block">
+      <div class="logo-badge">
+        <svg viewBox="0 0 24 24"><path d="M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.2l7.5 3.75L12 11.7 4.5 7.95 12 4.2zM4 9.3l7 3.5v7l-7-3.5v-7zm9 10.5v-7l7-3.5v7l-7 3.5z"/></svg>
+      </div>
+      <h1>Thailand Renewable Energy Zones
+        <span>AHP · MCDM Spatial Analysis</span>
+      </h1>
+    </div>
+    <div class="meta">
+      <strong>Zaigham26 · 2025</strong>
+      Transmission Infrastructure &amp; Resource Potential
+    </div>
+  </div>
+
+  <!-- MAP -->
+  <div id="map-container">
+    <div id="loading">
+      <div class="spinner"></div>
+      <div class="loading-text">Loading spatial data…</div>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <div id="map"></div>
 
-    <script>
-        // 1. Initialize Map
-        var map = L.map('map').setView([13.0, 101.5], 6); 
+    <!-- LEFT CONTROL PANEL -->
+    <div id="panel">
+      <div id="panel-header">
+        <h2>Layer Controls</h2>
+        <p>Toggle map layers below</p>
+      </div>
+      <div id="panel-body">
 
-        // 2. Add "Clean" Base Map
-        var osmLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-            attribution: '© OpenStreetMap contributors, © CARTO',
-            subdomains: 'abcd',
-            maxZoom: 20
-        }).addTo(map);
+        <div class="section-label">Data Layers</div>
 
-        // 3. Create Layer Groups
-        var solarLayer = L.layerGroup();
-        var windLayer = L.layerGroup();
-        var linesLayer = L.layerGroup();
-        var substationsLayer = L.layerGroup();
+        <div class="layer-row" onclick="toggleLayer('solar')">
+          <div class="layer-info">
+            <div class="swatch" style="background:var(--solar);"></div>
+            <span class="layer-name">Solar Potential Zones</span>
+          </div>
+          <div class="toggle-switch on" id="sw-solar"></div>
+        </div>
 
-        // 4. Helper Function to Format Popups
-        function getPopupContent(props, type) {
-            let content = `<div style="font-size:14px; line-height:1.5;">`;
-            
-            if (type === 'line') {
-                // TRANSMISSION LINES
-                let volts = props.Voltage_kV || props.voltage || "Unknown";
-                let operator = props.operator_en || props.operator || "Unknown Operator";
-                content += `<strong>⚡ Transmission Line</strong><br>
-                            <b>Voltage:</b> ${volts} kV<br>
-                            <b>Operator:</b> ${operator}<br>
-                            <b>Status:</b> Active`;
-            } 
-            else if (type === 'substation') {
-                // SUBSTATIONS
-                let name = props.name_en || props.name || "Unnamed Substation";
-                let volts = props.Voltage_kV || props.voltage || "N/A";
-                content += `<strong>🏢 ${name}</strong><br>
-                            <b>Voltage:</b> ${volts} kV<br>
-                            <b>Type:</b> ${props.substation || "Substation"}`;
-            } 
-            else if (type === 'solar') {
-                // SOLAR ZONES
-                let area = props.Area_sq_Km || props.Area_sq_km || 0;
-                // Round area to 2 decimal places
-                let areaClean = parseFloat(area).toFixed(2);
-                content += `<strong>☀️ Solar Potential Zone</strong><br>
-                            <b>Potential Class:</b> ${props.Potential || props.gridcode}<br>
-                            <b>Area:</b> ${areaClean} sq km`;
-            } 
-            else if (type === 'wind') {
-                // WIND ZONES
-                let area = props.Area_sq_km || props.Area_sq_Km || 0;
-                let areaClean = parseFloat(area).toFixed(2);
-                content += `<strong>💨 Wind Potential Zone</strong><br>
-                            <b>Wind Class:</b> ${props.Potential_ms || props.gridcode}<br>
-                            <b>Area:</b> ${areaClean} sq km`;
-            }
-            
-            content += `</div>`;
-            return content;
-        }
+        <div class="layer-row" onclick="toggleLayer('wind')">
+          <div class="layer-info">
+            <div class="swatch" style="background:var(--wind);"></div>
+            <span class="layer-name">Wind Potential Zones</span>
+          </div>
+          <div class="toggle-switch on" id="sw-wind"></div>
+        </div>
 
-        // 5. Smart Loader Function
-        async function loadLayer(filename, layerGroup, color, type) {
-            try {
-                const response = await fetch(`data/${filename}`);
-                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                const data = await response.json();
-                
-                L.geoJSON(data, {
-                    // Style for Points (Substations)
-                    pointToLayer: function (feature, latlng) {
-                        if (type === 'substation') {
-                            return L.circleMarker(latlng, {
-                                radius: 5,
-                                fillColor: "black",
-                                color: "#fff",
-                                weight: 1,
-                                opacity: 1,
-                                fillOpacity: 0.8
-                            });
-                        }
-                    },
-                    // Style for Lines & Polygons
-                    style: function (feature) {
-                        return {
-                            color: color,
-                            weight: type === 'line' ? 2 : 1,
-                            fillColor: color,
-                            fillOpacity: 0.5
-                        };
-                    },
-                    // The "Popups" Magic
-                    onEachFeature: function (feature, layer) {
-                        if (feature.properties) {
-                            // Use our new helper function to get clean text
-                            let cleanPopup = getPopupContent(feature.properties, type);
-                            layer.bindPopup(cleanPopup);
-                        }
-                    }
-                }).addTo(layerGroup);
-            } catch (error) {
-                console.error("Error loading layer:", filename, error);
-            }
-        }
+        <div class="layer-row" onclick="toggleLayer('lines')">
+          <div class="layer-info">
+            <div class="swatch line" style="background:var(--grid);"></div>
+            <span class="layer-name">Transmission Lines</span>
+          </div>
+          <div class="toggle-switch on" id="sw-lines"></div>
+        </div>
 
-        // 6. Load Data
-        loadLayer('solar.geojson', solarLayer, 'orange', 'solar');
-        loadLayer('wind.geojson', windLayer, 'blue', 'wind');
-        loadLayer('lines.geojson', linesLayer, 'red', 'line');
-        loadLayer('substations.geojson', substationsLayer, 'black', 'substation');
+        <div class="layer-row" onclick="toggleLayer('subs')">
+          <div class="layer-info">
+            <div class="swatch dot" style="background:var(--sub);"></div>
+            <span class="layer-name">Substations</span>
+          </div>
+          <div class="toggle-switch on" id="sw-subs"></div>
+        </div>
 
-        // 7. Add Controls
-        var baseMaps = { "Clean Map": osmLayer };
-        var overlayMaps = {
-            "Solar Zones": solarLayer,
-            "Wind Zones": windLayer,
-            "Transmission Lines": linesLayer,
-            "Substations": substationsLayer
-        };
+        <div class="section-label">Dataset Statistics</div>
+        <div class="stat-grid">
+          <div class="stat-card solar">
+            <div class="stat-value" id="cnt-solar">—</div>
+            <div class="stat-label">Solar Features</div>
+          </div>
+          <div class="stat-card wind">
+            <div class="stat-value" id="cnt-wind">—</div>
+            <div class="stat-label">Wind Features</div>
+          </div>
+          <div class="stat-card grid">
+            <div class="stat-value" id="cnt-lines">—</div>
+            <div class="stat-label">Line Segments</div>
+          </div>
+          <div class="stat-card sub">
+            <div class="stat-value" id="cnt-subs">—</div>
+            <div class="stat-label">Substations</div>
+          </div>
+        </div>
 
-        L.control.layers(baseMaps, overlayMaps, {collapsed: false}).addTo(map);
-        
-        // Default Visibility
-        solarLayer.addTo(map);
-        linesLayer.addTo(map);
-        substationsLayer.addTo(map);
+        <div class="section-label">Methodology</div>
+        <div class="method-badge">
+          Zones derived via <strong>Analytic Hierarchy Process (AHP)</strong> and
+          <strong>Multi-Criteria Decision Making (MCDM)</strong> applied to GIS rasters
+          exported from ArcGIS Pro. Data: OpenStreetMap / EGAT.
+        </div>
 
-        // 8. Add Scale Bar
-        L.control.scale({position: 'bottomright'}).addTo(map);
+      </div>
+    </div>
 
-    </script>
+    <!-- STATUS BAR -->
+    <div id="statusbar">
+      <span><span class="dot"></span>Live Spatial View</span>
+      <span class="pipe">|</span>
+      <span>Thailand · National Grid + Resource Zones</span>
+      <span class="pipe">|</span>
+      <span id="zoom-display">Zoom: —</span>
+    </div>
+
+    <!-- HOVER TOOLTIP -->
+    <div id="info-tooltip">
+      <h4 id="tt-title">Feature Info</h4>
+      <div id="tt-body"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ── DATA URLS ──────────────────────────────────────────── */
+const BASE = 'https://raw.githubusercontent.com/Zaigham26/Zaigham26.github.io/main/data/';
+const URLS = {
+  solar: BASE + 'solar.geojson',
+  wind:  BASE + 'wind.geojson',
+  lines: BASE + 'lines.geojson',
+  subs:  BASE + 'substations.geojson',
+};
+
+/* ── MAP INIT ───────────────────────────────────────────── */
+const map = L.map('map', {
+  center: [15.5, 101.0],
+  zoom: 6,
+  zoomControl: true,
+  attributionControl: true,
+});
+
+// Cartographic basemap (clean, muted)
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; OpenStreetMap &copy; CARTO',
+  subdomains: 'abcd', maxZoom: 19,
+}).addTo(map);
+
+map.on('zoomend', () => {
+  document.getElementById('zoom-display').textContent = 'Zoom: ' + map.getZoom();
+});
+
+/* ── LAYERS ─────────────────────────────────────────────── */
+const layers = {};
+const layerVisible = { solar: true, wind: true, lines: true, subs: true };
+
+const STYLES = {
+  solar: { color: '#f5a623', fillColor: '#f5a623', fillOpacity: 0.35, weight: 1.2, opacity: 0.9 },
+  wind:  { color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.35, weight: 1.2, opacity: 0.9 },
+  lines: { color: '#dc2626', weight: 1.2, opacity: 0.7 },
+  subs:  { radius: 6, fillColor: '#7c3aed', color: '#fff', weight: 1.5, fillOpacity: 0.9, opacity: 1 },
+};
+
+const LABELS = { solar: 'Solar Potential Zone', wind: 'Wind Potential Zone', lines: 'Transmission Line', subs: 'Substation' };
+
+function showTooltip(name, props) {
+  const tt = document.getElementById('info-tooltip');
+  document.getElementById('tt-title').textContent = name;
+  let html = '';
+  if (props) {
+    Object.entries(props).slice(0, 6).forEach(([k, v]) => {
+      if (v !== null && v !== undefined && v !== '') {
+        html += `<div style="margin:2px 0;font-size:11px;"><span style="color:#6b7280;">${k}:</span> ${v}</div>`;
+      }
+    });
+  }
+  if (!html) html = '<span style="color:#9ca3af;font-size:11px;">No additional attributes</span>';
+  document.getElementById('tt-body').innerHTML = html;
+  tt.style.display = 'block';
+  setTimeout(() => { tt.style.display = 'none'; }, 5000);
+}
+
+async function loadLayer(key) {
+  const res = await fetch(URLS[key]);
+  const gj = await res.json();
+
+  const count = gj.features ? gj.features.length : 0;
+  const el = document.getElementById('cnt-' + key);
+  if (el) el.textContent = count > 999 ? (count/1000).toFixed(1)+'k' : count;
+
+  let layer;
+  if (key === 'subs') {
+    layer = L.geoJSON(gj, {
+      pointToLayer: (f, latlng) => L.circleMarker(latlng, STYLES.subs),
+      onEachFeature: (f, l) => {
+        l.on('click', () => showTooltip(LABELS[key], f.properties));
+        l.bindTooltip(f.properties?.name || 'Substation', { sticky: true, className: 'tt' });
+      },
+    });
+  } else if (key === 'lines') {
+    layer = L.geoJSON(gj, {
+      style: STYLES.lines,
+      onEachFeature: (f, l) => {
+        l.on('click', () => showTooltip(LABELS[key], f.properties));
+        l.on('mouseover', () => l.setStyle({ weight: 3, opacity: 1 }));
+        l.on('mouseout',  () => l.setStyle(STYLES.lines));
+      },
+    });
+  } else {
+    layer = L.geoJSON(gj, {
+      style: STYLES[key],
+      onEachFeature: (f, l) => {
+        l.on('click', () => showTooltip(LABELS[key], f.properties));
+        l.on('mouseover', () => l.setStyle({ ...STYLES[key], fillOpacity: 0.65, weight: 2 }));
+        l.on('mouseout',  () => l.setStyle(STYLES[key]));
+      },
+    });
+  }
+
+  layers[key] = layer;
+  layer.addTo(map);
+}
+
+function toggleLayer(key) {
+  layerVisible[key] = !layerVisible[key];
+  const sw = document.getElementById('sw-' + key);
+  sw.classList.toggle('on', layerVisible[key]);
+  if (layers[key]) {
+    if (layerVisible[key]) map.addLayer(layers[key]);
+    else map.removeLayer(layers[key]);
+  }
+}
+
+/* ── INIT ───────────────────────────────────────────────── */
+(async () => {
+  // Load in z-order: lines first (bottom), then zones, then substations on top
+  const order = ['lines', 'solar', 'wind', 'subs'];
+  await Promise.all(order.map(loadLayer));
+
+  // Remove loading screen
+  const ld = document.getElementById('loading');
+  ld.classList.add('fade-out');
+  setTimeout(() => ld.remove(), 600);
+
+  // Update zoom display
+  document.getElementById('zoom-display').textContent = 'Zoom: ' + map.getZoom();
+})();
+</script>
 </body>
 </html>
