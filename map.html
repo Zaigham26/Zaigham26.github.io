@@ -31,6 +31,7 @@
     --panel:    rgba(245,243,238,0.97);
     --shadow:   0 4px 32px rgba(13,17,23,0.14);
     --radius:   10px;
+    --border:   #00e5a0;
   }
 
   html, body { height: 100%; font-family: 'DM Sans', sans-serif; background: var(--ink); color: var(--ink); }
@@ -109,6 +110,12 @@
   .swatch { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
   .swatch.line  { height: 3px; border-radius: 1px; }
   .swatch.dot   { border-radius: 50%; }
+  .swatch.dashed {
+    height: 3px; border-radius: 1px;
+    background: transparent;
+    border-top: 2px dashed var(--border);
+    width: 18px;
+  }
   .layer-name   { font-size: 12.5px; color: var(--ink); }
   .toggle-switch {
     width: 34px; height: 18px; border-radius: 9px;
@@ -148,8 +155,6 @@
   }
   .method-badge strong { color: var(--accent); }
 
-
-
   /* ── LOADING OVERLAY ──────────────────────────── */
   #loading {
     position: absolute; inset: 0;
@@ -181,6 +186,16 @@
   }
   #info-tooltip h4 { font-family:'Syne',sans-serif; font-size:13px; margin-bottom:4px; }
 
+  /* Thailand border pulse animation */
+  @keyframes borderPulse {
+    0%   { opacity: 1; }
+    50%  { opacity: 0.55; }
+    100% { opacity: 1; }
+  }
+  .thailand-border-glow {
+    animation: borderPulse 3s ease-in-out infinite;
+  }
+
   /* Leaflet overrides */
   .leaflet-control-attribution { font-size: 9px !important; background: rgba(245,243,238,.9) !important; }
   .leaflet-control-zoom { border: none !important; box-shadow: var(--shadow) !important; }
@@ -205,7 +220,6 @@
         <span>Wind and Solar</span>
       </h1>
     </div>
-
   </div>
 
   <!-- MAP -->
@@ -259,14 +273,18 @@
           <div class="toggle-switch on" id="sw-subs"></div>
         </div>
 
+        <div class="section-label">Boundaries</div>
 
-
-
+        <div class="layer-row" onclick="toggleLayer('border')">
+          <div class="layer-info">
+            <div class="swatch dashed"></div>
+            <span class="layer-name">Thailand Border</span>
+          </div>
+          <div class="toggle-switch on" id="sw-border"></div>
+        </div>
 
       </div>
     </div>
-
-
 
     <!-- HOVER TOOLTIP -->
     <div id="info-tooltip">
@@ -285,6 +303,8 @@ const URLS = {
   wind:  BASE + 'wind.geojson',
   lines: BASE + 'lines.geojson',
   subs:  BASE + 'substations.geojson',
+  // Thailand boundary from a reliable public source
+  border: 'https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson',
 };
 
 /* ── MAP INIT ───────────────────────────────────────────── */
@@ -303,12 +323,9 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
   subdomains: 'abcd', maxZoom: 19,
 }).addTo(map);
 
-map.on('zoomend', () => {
-});
-
 /* ── LAYERS ─────────────────────────────────────────────── */
 const layers = {};
-const layerVisible = { solar: true, wind: true, lines: true, subs: true };
+const layerVisible = { solar: true, wind: true, lines: true, subs: true, border: true };
 
 const STYLES = {
   solar: { color: '#f5a623', fillColor: '#f5a623', fillOpacity: 0.35, weight: 1.2, opacity: 0.9 },
@@ -334,6 +351,85 @@ function showTooltip(name, props) {
   document.getElementById('tt-body').innerHTML = html;
   tt.style.display = 'block';
   setTimeout(() => { tt.style.display = 'none'; }, 5000);
+}
+
+/* ── THAILAND BORDER LAYER ──────────────────────────────── */
+async function loadThailandBorder() {
+  const res = await fetch(URLS.border);
+  const gj = await res.json();
+
+  // Filter only Thailand
+  const thailand = {
+    type: 'FeatureCollection',
+    features: gj.features.filter(f =>
+      f.properties && (
+        f.properties.ADMIN === 'Thailand' ||
+        f.properties.name === 'Thailand' ||
+        f.properties.ISO_A2 === 'TH' ||
+        f.properties.ISO_A3 === 'THA'
+      )
+    )
+  };
+
+  if (!thailand.features.length) {
+    console.warn('Thailand feature not found in dataset');
+    return;
+  }
+
+  // Outer glow layer (thick, semi-transparent)
+  const glowLayer = L.geoJSON(thailand, {
+    style: {
+      color: '#00e5a0',
+      weight: 8,
+      opacity: 0.18,
+      fillColor: '#00e5a0',
+      fillOpacity: 0.04,
+      dashArray: null,
+    },
+    interactive: false,
+  });
+
+  // Mid glow layer
+  const midGlowLayer = L.geoJSON(thailand, {
+    style: {
+      color: '#00e5a0',
+      weight: 4,
+      opacity: 0.35,
+      fill: false,
+      dashArray: null,
+    },
+    interactive: false,
+  });
+
+  // Inner crisp border line
+  const borderLayer = L.geoJSON(thailand, {
+    style: {
+      color: '#00e5a0',
+      weight: 2,
+      opacity: 1,
+      fill: false,
+      dashArray: '8 5',
+      lineCap: 'round',
+      lineJoin: 'round',
+    },
+    interactive: false,
+  });
+
+  // Group all three into a layer group
+  const group = L.layerGroup([glowLayer, midGlowLayer, borderLayer]);
+
+  // Apply pulse animation to the SVG paths after adding to map
+  group.addTo(map);
+  setTimeout(() => {
+    document.querySelectorAll('.leaflet-overlay-pane path').forEach(p => {
+      const stroke = p.getAttribute('stroke');
+      if (stroke && stroke.toLowerCase() === '#00e5a0') {
+        p.classList.add('thailand-border-glow');
+      }
+    });
+  }, 300);
+
+  layers['border'] = group;
 }
 
 async function loadLayer(key) {
@@ -363,12 +459,7 @@ async function loadLayer(key) {
       },
     });
   } else {
-    // ── CLUSTER → CONCAVE HULL fill ──────────────────────────────────────
-    // 1. Cluster all features whose centroids are within MAX_GAP_KM of each other
-    // 2. For each cluster build a concave hull that wraps + fills internal gaps
-    // 3. Render one smooth filled polygon per cluster
-
-    const MAX_GAP_KM = 5; // km — tune higher to merge more distant patches
+    const MAX_GAP_KM = 5;
 
     function distKm(a, b) {
       try { return turf.distance(a, b, { units: 'kilometers' }); } catch(e) { return Infinity; }
@@ -377,7 +468,6 @@ async function loadLayer(key) {
     const features = gj.features.filter(f => f && f.geometry);
     const centroids = features.map(f => { try { return turf.centroid(f); } catch(e) { return null; } });
 
-    // Single-linkage BFS clustering
     const clusterOf = new Array(features.length).fill(-1);
     let clusterCount = 0;
     for (let i = 0; i < features.length; i++) {
@@ -397,25 +487,21 @@ async function loadLayer(key) {
       clusterCount++;
     }
 
-    // Build one concave hull per cluster
     const clusterPolygons = [];
     for (let c = 0; c < clusterCount; c++) {
       const members = features.filter((_, i) => clusterOf[i] === c);
       if (!members.length) continue;
       try {
-        // Collect all vertex points from every member polygon
         const pts = [];
         members.forEach(f => {
           try { turf.coordAll(f).forEach(co => pts.push(turf.point(co))); } catch(e) {}
         });
         if (pts.length < 3) {
-          // too few points — just union directly
           let u = members[0];
           for (let i = 1; i < members.length; i++) { try { u = turf.union(u, members[i]); } catch(e) {} }
           clusterPolygons.push(u); continue;
         }
         const ptCol = turf.featureCollection(pts);
-        // concave hull — maxEdge = MAX_GAP_KM fills gaps up to that distance
         let hull = null;
         try { hull = turf.concave(ptCol, { maxEdge: MAX_GAP_KM, units: 'kilometers' }); } catch(e) {}
         if (!hull) { try { hull = turf.convex(ptCol); } catch(e) {} }
@@ -458,8 +544,10 @@ function toggleLayer(key) {
 (async () => {
   const msg = document.getElementById('loading-msg');
 
+  msg.textContent = 'Loading Thailand boundary…';
+  await loadThailandBorder();
+
   msg.textContent = 'Fetching GeoJSON data…';
-  // Lines & substations load raw (no dissolve needed)
   await Promise.all(['lines', 'subs'].map(loadLayer));
 
   msg.textContent = 'Dissolving solar zones…';
@@ -468,12 +556,13 @@ function toggleLayer(key) {
   msg.textContent = 'Dissolving wind zones…';
   await loadLayer('wind');
 
+  // Bring border to front so it's visible above other layers
+  if (layers['border']) layers['border'].eachLayer(l => l.bringToFront && l.bringToFront());
+
   // Remove loading screen
   const ld = document.getElementById('loading');
   ld.classList.add('fade-out');
   setTimeout(() => ld.remove(), 600);
-
-  // Update zoom display
 })();
 </script>
 </body>
