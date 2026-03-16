@@ -411,30 +411,79 @@ async function loadLayer(key) {
       },
     });
   } else {
-    // ── DISSOLVE: union all polygons to eliminate internal gaps/holes ──
-    let dissolved = gj;
-    try {
-      // Small outward buffer (~100m) to close tiny gaps between adjacent polgyons
-      const buffered = turf.buffer(gj, 0.05, { units: 'kilometers' });
-      let unioned = buffered.features[0];
-      for (let i = 1; i < buffered.features.length; i++) {
-        try { unioned = turf.union(unioned, buffered.features[i]); }
-        catch(e) { /* skip malformed geometry */ }
-      }
-      // Shrink back to restore approximate original boundary
-      const shrunk = turf.buffer(unioned, -0.05, { units: 'kilometers' });
-      dissolved = shrunk || gj;
-    } catch(e) {
-      console.warn('Dissolve failed for', key, e);
-      dissolved = gj;
+    // ── CLUSTER → CONCAVE HULL fill ──────────────────────────────────────
+    // 1. Cluster all features whose centroids are within MAX_GAP_KM of each other
+    // 2. For each cluster build a concave hull that wraps + fills internal gaps
+    // 3. Render one smooth filled polygon per cluster
+
+    const MAX_GAP_KM = 5; // km — tune higher to merge more distant patches
+
+    function distKm(a, b) {
+      try { return turf.distance(a, b, { units: 'kilometers' }); } catch(e) { return Infinity; }
     }
 
+    const features = gj.features.filter(f => f && f.geometry);
+    const centroids = features.map(f => { try { return turf.centroid(f); } catch(e) { return null; } });
+
+    // Single-linkage BFS clustering
+    const clusterOf = new Array(features.length).fill(-1);
+    let clusterCount = 0;
+    for (let i = 0; i < features.length; i++) {
+      if (clusterOf[i] !== -1) continue;
+      clusterOf[i] = clusterCount;
+      const queue = [i];
+      while (queue.length) {
+        const cur = queue.shift();
+        for (let j = 0; j < features.length; j++) {
+          if (clusterOf[j] !== -1 || !centroids[cur] || !centroids[j]) continue;
+          if (distKm(centroids[cur], centroids[j]) <= MAX_GAP_KM) {
+            clusterOf[j] = clusterCount;
+            queue.push(j);
+          }
+        }
+      }
+      clusterCount++;
+    }
+
+    // Build one concave hull per cluster
+    const clusterPolygons = [];
+    for (let c = 0; c < clusterCount; c++) {
+      const members = features.filter((_, i) => clusterOf[i] === c);
+      if (!members.length) continue;
+      try {
+        // Collect all vertex points from every member polygon
+        const pts = [];
+        members.forEach(f => {
+          try { turf.coordAll(f).forEach(co => pts.push(turf.point(co))); } catch(e) {}
+        });
+        if (pts.length < 3) {
+          // too few points — just union directly
+          let u = members[0];
+          for (let i = 1; i < members.length; i++) { try { u = turf.union(u, members[i]); } catch(e) {} }
+          clusterPolygons.push(u); continue;
+        }
+        const ptCol = turf.featureCollection(pts);
+        // concave hull — maxEdge = MAX_GAP_KM fills gaps up to that distance
+        let hull = null;
+        try { hull = turf.concave(ptCol, { maxEdge: MAX_GAP_KM, units: 'kilometers' }); } catch(e) {}
+        if (!hull) { try { hull = turf.convex(ptCol); } catch(e) {} }
+        if (!hull) {
+          let u = members[0];
+          for (let i = 1; i < members.length; i++) { try { u = turf.union(u, members[i]); } catch(e) {} }
+          hull = u;
+        }
+        clusterPolygons.push(hull);
+      } catch(e) {}
+    }
+
+    const dissolved = turf.featureCollection(clusterPolygons.filter(Boolean));
+
     layer = L.geoJSON(dissolved, {
-      style: { ...STYLES[key], fillOpacity: 0.45, weight: 1.5 },
+      style: { ...STYLES[key], fillOpacity: 0.5, weight: 2 },
       onEachFeature: (f, l) => {
-        l.on('click', () => showTooltip(LABELS[key], { Layer: LABELS[key], Source: 'AHP/MCDM Analysis', Note: 'Dissolved zone' }));
-        l.on('mouseover', () => l.setStyle({ ...STYLES[key], fillOpacity: 0.65, weight: 2.5 }));
-        l.on('mouseout',  () => l.setStyle({ ...STYLES[key], fillOpacity: 0.45, weight: 1.5 }));
+        l.on('click', () => showTooltip(LABELS[key], { Layer: LABELS[key], Source: 'AHP/MCDM Analysis', Note: 'Clustered & filled zone' }));
+        l.on('mouseover', () => l.setStyle({ ...STYLES[key], fillOpacity: 0.7, weight: 2.5 }));
+        l.on('mouseout',  () => l.setStyle({ ...STYLES[key], fillOpacity: 0.5, weight: 2 }));
       },
     });
   }
