@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Thailand Renewable Energy Zones</title>
+<title>Thailand Renewable Energy Zones — Wind and Solar</title>
 
 <!-- Leaflet -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
@@ -148,23 +148,7 @@
   }
   .method-badge strong { color: var(--accent); }
 
-  /* ── BOTTOM STATUS BAR ────────────────────────── */
-  #statusbar {
-    position: absolute;
-    bottom: 18px; left: 50%;
-    transform: translateX(-50%);
-    background: var(--ink);
-    color: #fff;
-    border-radius: 30px;
-    padding: 8px 20px;
-    font-size: 11px; letter-spacing: 0.04em;
-    z-index: 800;
-    display: flex; gap: 18px; align-items: center;
-    box-shadow: var(--shadow);
-    white-space: nowrap;
-  }
-  #statusbar .dot { width:7px; height:7px; border-radius:50%; background: var(--accent); display:inline-block; margin-right:5px; }
-  #statusbar .pipe { color: #374151; }
+
 
   /* ── LOADING OVERLAY ──────────────────────────── */
   #loading {
@@ -282,14 +266,7 @@
       </div>
     </div>
 
-    <!-- STATUS BAR -->
-    <div id="statusbar">
-      <span><span class="dot"></span>Live Spatial View</span>
-      <span class="pipe">|</span>
-      <span>Thailand · National Grid + Resource Zones</span>
-      <span class="pipe">|</span>
-      <span id="zoom-display">Zoom: —</span>
-    </div>
+
 
     <!-- HOVER TOOLTIP -->
     <div id="info-tooltip">
@@ -314,9 +291,11 @@ const URLS = {
 const map = L.map('map', {
   center: [15.5, 101.0],
   zoom: 6,
-  zoomControl: true,
+  zoomControl: false,
   attributionControl: true,
 });
+
+L.control.zoom({ position: 'bottomright' }).addTo(map);
 
 // Cartographic basemap (clean, muted)
 L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
@@ -325,7 +304,6 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
 }).addTo(map);
 
 map.on('zoomend', () => {
-  document.getElementById('zoom-display').textContent = 'Zoom: ' + map.getZoom();
 });
 
 /* ── LAYERS ─────────────────────────────────────────────── */
@@ -496,7 +474,6 @@ function toggleLayer(key) {
   setTimeout(() => ld.remove(), 600);
 
   // Update zoom display
-  document.getElementById('zoom-display').textContent = 'Zoom: ' + map.getZoom();
 })();
 </script>
 </body>
