@@ -6,8 +6,6 @@ This project is part of my learning portfolio.
 ## Live Demo
 - https://zaigham26.github.io/
 
-## Screenshot
-![Energy Zones Map Screenshot](assets/screenshots/Screenshot_189.png)
 ## What this project shows
 - Building and publishing a project on **GitHub Pages**
 - Working with map layers / boundaries / styling
